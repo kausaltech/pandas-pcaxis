@@ -1,5 +1,3 @@
-# -*- coding: UTF-8 -*-
-
 """
 This module contains tools to load information about PC Axis files in
 Statistics Finland's databases and download the files from the databases
@@ -9,9 +7,7 @@ http://www.stat.fi/org/lainsaadanto/avoin_data_en.html
 For license see LICENSE document
 """
 
-
-import os, csv, datetime, urllib, urllib2, httplib, StringIO, gzip, os, time
-import csv_tools
+import os, csv, datetime, urllib.request, urllib.parse, urllib.error, zlib, time
 
 class PxInfo(object):
     """
@@ -33,11 +29,11 @@ tablesize, type, language, title, *args):
         self.language = language.strip()
         self.title = title.strip()
 
-    def __unicode__(self):
-        return u'PX file %s: %s' % (self.path, self.title)
+    def __str__(self):
+        return 'PX file %s: %s' % (self.path, self.title)
 
     def __repr__(self):
-        return unicode(self).encode('utf-8')
+        return str(self)
 
     @property
     def created_dt(self):
@@ -52,92 +48,72 @@ def create_px(url="http://pxweb2.stat.fi/database/StatFin/StatFin_rap.csv"):
     Creates a list of Px-objects from a given url. Url should point to a CSV file.
     Url's default value points to Statfin databases contents CSV.
     """
-    iterable = urllib.urlopen(url)
-    iterable.next() #First line is for metadata
-    return [PxInfo(*i) for i in csv_tools.UnicodeReader(iterable, delimiter=";", encoding="iso-8859-1")]
+    response = urllib.request.urlopen(url)
+    lines = iter(response.read().decode('iso-8859-1').splitlines())
+    next(lines) # Skip headers
+    return [PxInfo(*i) for i in csv.reader(lines, delimiter=";")]
 
-def fetch_px_zipped(px_objs, target_dir="."):
-    """
-    Fetch PC Axis files for given list of Px objects with gzip compression on the transfer
-    Modified from http://www.diveintopython.net/http_web_services/gzip_compression.html
-    Save the files to target directory
+def fetch_px_zipped(px_objs, target_dir=".", sleep=1):
+    fetch_px(px_objs, target_dir=target_dir, compressed=True, sleep=sleep)
 
-    WARNING: Statfin database contains over 2500 PX files with many gigabytes of data.
-    """
-    import urllib2, httplib, StringIO, gzip, os.path, time
-    opener = urllib2.build_opener()
-    for px_obj in px_objs:
-        base, pxfile_path = os.path.split(px_obj.path)
-        pxfile = open(os.path.join(target_dir, pxfile_path), 'w+')
-        request = urllib2.Request(px_obj.path)
-        request.add_header('Accept-encoding', 'gzip')
-        f = opener.open(request)
-        compressedstream = StringIO.StringIO(f.read())
-        try:
-            for data in gzip.GzipFile(fileobj=compressedstream):
-                pxfile.write(data)
-            print f.headers
-        except IOError, e:
-            print e, px_obj, f.headers
-            break
-        pxfile.close()
-        time.sleep(1)
-
-
-def fetch_px(px_objs, target_dir="."):
+def fetch_px(px_objs, target_dir=".", compressed=False, sleep=1):
     """
     Fetch PC Axis files for given list of Px objects
     Save the files to target directory
 
     WARNING: Statfin database contains over 2500 PX files with many gigabytes of data.
     """
-    import urllib2, httplib, StringIO, gzip, os
-    opener = urllib2.build_opener()
-    for n, px_obj in enumerate(px_objs):
-        protocol, url = urllib.splittype(px_obj.path)
-        base, pxfile_part = urllib.splithost(url)
-        if pxfile_part.startswith(os.sep):
-            pxfile_part = pxfile_part.replace(os.sep, '', 1)
-        pxfile_path = os.path.join(target_dir, pxfile_part)
-        if os.path.exists(pxfile_path):
-            updated = check_update(px_obj.path, pxfile_path, opener)
-            if not updated:
+
+    for px_obj in px_objs:
+        url_parts = urllib.parse.urlparse(px_obj.path)
+        target_path = os.path.join(target_dir, url_parts.path[1:]) # url_parts.path starts with '/'
+        target_path = os.path.abspath(target_path)
+
+        if os.path.exists(target_path):
+            if refresh == "check" and is_latest(px_obj.path, target_path):
+                time.sleep(1)
                 continue
-        request = urllib2.Request(px_obj.path)
+
         try:
-            f = opener.open(request)
-        except urllib2.HTTPError, e:
-            print e, px_obj
+            request = urllib.request.Request(px_obj.path)
+            if compressed:
+                request.add_header('Accept-encoding', 'gzip')
+            response = urllib.request.urlopen(request)
+        except urllib.error.HTTPError as e:
             continue
 
-        makedirs(pxfile_path)
-        pxfile = open(pxfile_path, 'w+')
-        
+        makedirs(target_path)
         try:
-            for data in f.read():
-                pxfile.write(data)
-        except IOError, e:
-            print e, px_obj, f.headers
+            with open(target_path, 'wb') as f:
+                data = response.read()
+                if compressed:
+                    data = zlib.decompress(data, zlib.MAX_WBITS|16)
+                f.write(data)
+        except IOError as e:
             break
-        pxfile.close()
 
-def check_update(url, file_path, opener):
+        time.sleep(sleep)
+
+def is_latest(url, file_path):
     """
     Check that network resource is newer than file resource
     """
-    req = urllib2.Request(url)
     try:
-        url_req = opener.open(req)
-    except urllib2.HTTPError, e:
-        print e, url
-        return False
-    file_mtime_dt = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
-    url_modified_dt = datetime.datetime.strptime(
-        url_req.headers.dict.get('last-modified'), '%a, %d %b %Y %H:%M:%S GMT')
-    return url_modified_dt > file_mtime_dt
+        response = urllib.request.urlopen(urllib.request.Request(
+            url,
+            method='HEAD'
+        ))
+        file_mtime_dt = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
+        url_modified_dt = datetime.datetime.strptime(
+            response.getheader('last-modified'),
+            '%a, %d %b %Y %H:%M:%S GMT'
+        )
+        return url_modified_dt < file_mtime_dt
+    except urllib.error.HTTPError as e:
+        return True
 
 def makedirs(px_path):
     try:
-        os.makedirs(os.path.split(px_path)[0])
-    except OSError, e:
+        os.makedirs(os.path.dirname(px_path))
+    except OSError as e:
         pass

@@ -3,7 +3,7 @@
 
 # WIP
 
-Now requires Python 3, but has not been tested beyond PX file -> Pandas Dataframe conversion on Python 3.6 and Pandas 0.19.2. Python 2 is not supported at the moment (but works on commit 7669e5ccb5b8e0825d1044d5fe908b162904a523).
+Now requires Python 3, but has not been tested beyond a simple Download -> PX file on disk -> Pandas Dataframe workflow on Python 3.6 and Pandas 0.20.2. Python 2 is not supported at the moment (PX file -> Pandas DataFrame works on commit 7669e5ccb5b8e0825d1044d5fe908b162904a523, current status in unknown).
 
 ## Usage
 
