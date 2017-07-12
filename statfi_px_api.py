@@ -70,7 +70,7 @@ def fetch_px(px_objs, target_dir=".", compressed=False, sleep=1):
         target_path = os.path.abspath(target_path)
 
         if os.path.exists(target_path):
-            if refresh == "check" and is_latest(px_obj.path, target_path):
+            if is_latest(px_obj.path, target_path):
                 time.sleep(1)
                 continue
 
