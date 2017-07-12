@@ -9,13 +9,28 @@ Now requires Python 3, but has not been tested beyond a simple Download -> PX fi
 
 Requisite packages:
 
-	pip install pandas ipython jupyter
+```
+pip install pandas
+```
 
-Use in Ipython shell:
+To fetch list of available PX files
+```python
+import statsfi_px_api
+px_info = statsfi_px_api.create_px(url="http://pxweb2.stat.fi/database/StatFin/StatFin_rap.csv")
+```
 
-	import px_reader
-	px_obj = px_reader.Px('a_px_file_on_filesystem.px')
-	pandas_dataframe = px_obj.pd_dataframe()
+To download PX Files to disk (default to current directory)
+```python
+statsfi_px_api.fetch_px(px_info, target_dir=".", compressed=False, sleep=1)
+```
+**NB:** Setting `compressed=True` is broken at 2017-07-12 due to stats.fi API not behaving as documented.
+
+To read files into Pandas DataFrames
+```python
+import px_reader
+px_obj = px_reader.Px('a_px_file_on_filesystem.px')
+pandas_dataframe = px_obj.pd_dataframe()
+```
 
 ## Features
 
@@ -31,7 +46,7 @@ Installing scientific Python toolset can be a daunting task. One option is the [
 License
 -------
 
-This repository is a fork from https://github.com/statfi/opendata
+This repository is a fork from https://github.com/jussiarpalahti/opendata which in turn is forked from https://github.com/statfi/opendata 
 
 Below is its license which applies here also
 
