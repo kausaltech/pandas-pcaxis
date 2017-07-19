@@ -129,7 +129,7 @@ def grouper(n, iterable, fillvalue=None):
     args = [iter(iterable)] * n
     return zip_longest(fillvalue=fillvalue, *args)
 
-def index(px):
+def generate_indices(px):
     """
     Pandas has a concept of MultiIndex for hierarchical or multidimensional tables
     PC Axis files have list of column and row variables (can be thought of as column
@@ -202,7 +202,7 @@ def build_dataframe(px):
     """
     Build a Pandas DataFrame from Px rows and columns
     """
-    cols, rows = index(px)
+    cols, rows = generate_indices(px)
     col_index = pd.MultiIndex.from_arrays(cols)
     row_index = pd.MultiIndex.from_arrays(rows)
     return pd.DataFrame(px.data, index=row_index, columns=col_index)
