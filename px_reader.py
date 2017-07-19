@@ -56,7 +56,6 @@ class Px(object):
         Parses metadata keywords from px_doc and inserts those into self object
         Returns the data part
         """
-        # TODO: Support for other encodings
         meta, data = open(px_doc, encoding='ISO-8859-1').read().split("DATA=")
         nmeta = {}
         for line in meta.strip().split(';\n'):
@@ -79,8 +78,7 @@ class Px(object):
         return data.strip()[:-1]
    
     def __init__(self, px_doc):
-        data = self._split_px(px_doc)
-        self._data = data.replace('"', '')
+        self._data = self._split_px(px_doc)
 
         if type(self.stub) != type(list()):
             self.stub = [self.stub]
@@ -170,7 +168,6 @@ def index(px):
         field_values = px.values.get(field)
         repeats = rep_index / len(field_values)
         rep_index = repeats
-        print(field, repeats)
 
         col_index.append(list())
         index = 0
@@ -188,7 +185,6 @@ def index(px):
         field_values = px.values.get(field)
         repeats = rep_index / len(field_values)
         rep_index = repeats
-        print(field, repeats)
 
         row_index.append(list())
         index = 0

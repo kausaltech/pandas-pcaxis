@@ -17,15 +17,14 @@ class PxInfo(object):
 
     _timeformat = '%Y-%m-%d %H:%M' #Just a cache place for dateformat
 
-    def __init__(self, path, size, created, updated, variables,
-tablesize, type, language, title, *args):
+    def __init__(self, path, size, created, updated, variables, tablesize, _type, language, title, *args):
         self.path = path.strip()
         self.size = size.strip()
         self.created = created.strip()
         self.updated = updated.strip()
         self.variables = variables.strip()
         self.tablesize = tablesize.strip()
-        self.type = type.strip()
+        self.type = _type.strip()
         self.language = language.strip()
         self.title = title.strip()
 
