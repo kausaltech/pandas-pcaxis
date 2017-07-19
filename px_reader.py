@@ -14,27 +14,13 @@ In addition there is a conversion functionality to create a Pandas DataFrame obj
 Note: Python 2.7 support required
 """
 
-import resource, logging, re, codecs
 from collections import OrderedDict as OD
-from collections import defaultdict
-from itertools import zip_longest, cycle, repeat
+from itertools import zip_longest, cycle
 from operator import mul
 import pandas as pd
 from functools import reduce
+import re
 
-def get_logger(level=logging.DEBUG, handler=logging.StreamHandler):
-    """
-    Adapted from logging module's documentation.
-    """
-    log = logging.getLogger('px_log')
-    log.setLevel(level)
-    ch = handler()
-    ch.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-    ch.set_name('px_handler')
-    existing_handlers = [h for h in log.handlers if h.name == ch.name]
-    if not existing_handlers:
-        log.addHandler(ch)
-    return log
 
 class Px(object):
     """
@@ -47,8 +33,6 @@ class Px(object):
     _timeformat = '%Y-%m-%d %H:%M'
     _subfield_re = re.compile(r'^(.*?)\("(.*?)"\)=')
     _items_re = re.compile(r'"(.*?)"')
-
-    log = get_logger()
 
     def _get_subfield_name(self, field):
         m = self._subfield_re.search(field)
