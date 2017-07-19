@@ -16,12 +16,12 @@ pip install pandas
 To fetch list of available PX files
 ```python
 import statsfi_px_api
-px_info = statsfi_px_api.create_px(url="http://pxweb2.stat.fi/database/StatFin/StatFin_rap.csv")
+px_info = statsfi_px_api.list_available_px(url="http://pxweb2.stat.fi/database/StatFin/StatFin_rap.csv")
 ```
 
 To download PX Files to disk (default to current directory)
 ```python
-statsfi_px_api.fetch_px(px_info, target_dir=".", compressed=False, sleep=1)
+statsfi_px_api.download_px(px_info, target_dir=".", compressed=False, sleep=1)
 ```
 **NB:** Setting `compressed=True` is broken at 2017-07-12 due to stats.fi API not behaving as documented.
 
