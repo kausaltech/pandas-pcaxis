@@ -42,7 +42,7 @@ class PxInfo(object):
     def updated_dt(self):
         return datetime.datetime.strptime(self.updated, self._timeformat)
 
-def create_px(url="http://pxweb2.stat.fi/database/StatFin/StatFin_rap.csv"):
+def create_px(url='http://pxnet2.stat.fi/database/StatFin/StatFin_rap.csv'):
     """
     Creates a list of Px-objects from a given url. Url should point to a CSV file.
     Url's default value points to Statfin databases contents CSV.
