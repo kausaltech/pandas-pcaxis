@@ -60,6 +60,7 @@ class Px(object):
         meta, data = open(px_doc, encoding='ISO-8859-1').read().split("DATA=")
         nmeta = {}
         for line in meta.strip().split(';\n'):
+            line=line.strip()
             if line:
                 m = self._subfield_re.match(line)
                 if m:
