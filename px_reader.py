@@ -21,6 +21,7 @@ import pandas as pd
 from functools import reduce
 import re
 
+PYTHONIFY_PATTERN = re.compile('[\W]+')
 
 class Px(object):
     """
@@ -203,3 +204,114 @@ def build_dataframe(px):
     col_index = pd.MultiIndex.from_arrays(cols)
     row_index = pd.MultiIndex.from_arrays(rows)
     return pd.DataFrame(px.data, index=row_index, columns=col_index)
+
+
+def pythonify_column_names(df):
+    """
+    Pythonifies column names to *approximately* valid python identifiers. Column names
+    starting with numbers will still be invalid python identifiers.
+
+    spaces are replaced by underscores, 'ä', 'ö' and 'å' are mapped to 'a', 'o' and 'a'
+    respectively. Percentage signs are replaced with the string 'perc'.
+
+    All other non-alphanumerical characters are removed. Alphabet-characters are lowercased.
+
+    Examples:
+    'Voting turnout' -> 'voting_turnout'
+    'Males %' -> 'males_perc'
+    'Ellis Example / GOP' -> 'ellis_example__gop'
+    """
+    cols = [col for col in df]
+    new_cols = _prepare_names_for_hdf5(cols)
+    df.columns = new_cols
+    return df
+
+
+def _prepare_names_for_hdf5(names):
+    new_names = []
+    for name in names:
+        if isinstance(name, list):
+            new_names.append(prepare_names_for_hdf5(name))
+        else:
+            new_name = name.lower().replace(' ', '_').replace('ä', 'a').replace('ö', 'o').replace('å','a').replace('%', 'perc')
+            new_name = PYTHONIFY_PATTERN.sub('', new_name)
+            new_names.append(new_name)
+    return new_names
+
+
+def flatten(df, stacked_cols=None):
+    """
+    Flattens a pandas.DataFrame with MultiIndex row and/or column indices to a 2D pandas.DataFrame with either
+    Index or RangeIndex row and column indices. If input is an instance of pandas.Series or an already flat 
+    pandas.DataFrames, it is returned as-is.
+    :param df: DataFrame (or Series to Flatten)
+    :param stacked_cols: Any column levels that should be extracted into column(s), rather than flattened into parts of
+        the single-level column index. None indicates no stacking.
+    :return: the flattened DataFrame.
+    """
+
+    if isinstance(df, pd.Series):
+        # It's Series and by definition already flat, return as is
+        print(df.index.nlevels, df.columns.nlevels)
+        return df
+
+    if df.index.nlevels == 1 and df.columns.nlevels == 1:
+        # This DataFrame is already flat, return as is
+        print(df.index.nlevels, df.columns.nlevels)
+        return df
+
+    # If column is multi-indexed, extract the values of one column-index level to separate column.
+    # For StatFi data, 0 seems like a reasonable guess based on going over some tables manully.
+    #
+    # I.e. transform
+    # |------------------------------------------------------------------------------------------------|
+    # |                     total              total           ... Center Party     Center Party    ...|
+    # |                     candidate_votes    candidate_votes ... candidate_votes  candidate_votes ...|
+    # |                     all                male            ... all              male            ...|
+    # | Koko maa    2015    2968459            1704054         ... 626218           408842          ...|
+    # | Koko maa    2011    2939571            1709391         ... 463266           295650          ...|
+    # | ...         ...     ...                ...             ... ...              ...             ...|
+    # |------------------------------------------------------------------------------------------------|
+    # to
+    # |-----------------------------------------------------------------------------------------------------------------|
+    # |                                     candidate_votes    candidate_votes  ... candidate_votes  candidate_votes ...|
+    # |                                     all                male             ... all              male            ...|
+    # | Koko maa    2015    total           2968459            1704054          ... 626218           408842          ...|
+    # | Koko maa    2011    Center Party    2939571            1709391          ... 463266           295650          ...|
+    # | ...         ...     ...             ...                ...              ... ...              ...             ...|
+    # |-----------------------------------------------------------------------------------------------------------------|
+    #
+    if df.columns.nlevels > 1 and stacked_cols is not None:
+        df = df.stack(level=stacked_cols)
+
+    # If the DataFrame still has multi-index for columns, flatten the column index.
+    #
+    # I.e. transform
+    # |------------------------------------------------------------------------------------------------------------------|
+    # |                                     candidate_votes    candidate_votes  ... candidate_votes   candidate_votes ...|
+    # |                                     all                male             ... all               male            ...|
+    # | Koko maa    2015    total           2968459            1704054          ... 626218            408842          ...|
+    # | Koko maa    2011    Center Party    2939571            1709391          ... 463266            295650          ...|
+    # | ...         ...     ...             ...                ...              ... ...               ...             ...|
+    # |------------------------------------------------------------------------------------------------------------------|
+    # to
+    # |-----------------------------------------------------------------------------------------------------------------------------------------|
+    # |                                     candidate_votes_all    candidate_votes_male    ... candidate_votes_all   candidate_votes_male    ...|
+    # | Koko maa    2015    total           2968459                1704054                 ... 626218                408842                  ...|
+    # | Koko maa    2011    Center Party    2939571                1709391                 ... 463266                295650                  ...|
+    # | ...         ...     ...             ...                    ...                     ... ...                   ...                     ...|
+    # |-----------------------------------------------------------------------------------------------------------------------------------------|
+    if df.columns.nlevels > 1:
+        flat_col_names = ['_'.join(col_tuple) for col_tuple in df.columns]
+        flat_idx = pd.Index(flat_col_names)
+        df.columns = flat_idx
+
+    # By this point, Pandas can figure out that the table no longer needs to be multi-indexed for
+    # columns OR rows. Calling reset_index() reflects this to the DataFrame.
+    # To be more explicit: at this point col-index has only one level can can be transformed to a
+    # simple Index. reset_index() also -- far whatever reason I don't fully understand -- transforms
+    # the ROW INDEX to either a RangeIndex or Index from a MultiIndex. Thus, at the end of this
+    # operation the whole DataFrame is flat.
+    df = df.reset_index()
+
+    return df
