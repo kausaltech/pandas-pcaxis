@@ -95,12 +95,6 @@ class Px(object):
         #
         self.cols = reduce(mul, [len(self.values.get(i)) for i in self.heading], 1)
         self.rows = reduce(mul, [len(self.values.get(i)) for i in self.stub], 1)
-    
-   # def __unicode__(self):
-  #      return u'PX file %s: %s' % (self.name, self.title)
-   
-    #def __repr__(self):
-    #    return unicode(self)
    
     @property
     def created_dt(self):
@@ -120,6 +114,7 @@ class Px(object):
         """
         return build_dataframe(self)
 
+
 def grouper(n, iterable, fillvalue=None):
     """
     Collect data into fixed-length chunks or blocks
@@ -128,6 +123,7 @@ def grouper(n, iterable, fillvalue=None):
     # grouper(3, 'ABCDEFG', 'x') --> ABC DEF Gxx
     args = [iter(iterable)] * n
     return zip_longest(fillvalue=fillvalue, *args)
+
 
 def generate_indices(px):
     """
@@ -197,6 +193,7 @@ def generate_indices(px):
             index += 1
             row_index[n].append(value)
     return col_index, row_index
+
 
 def build_dataframe(px):
     """
