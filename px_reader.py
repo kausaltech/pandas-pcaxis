@@ -221,6 +221,8 @@ def pythonify_column_names(df):
     'Males %' -> 'males_perc'
     'Ellis Example / GOP' -> 'ellis_example__gop'
     """
+    if isinstance(df, pd.Series):
+        return df
     cols = [col for col in df]
     new_cols = _prepare_names_for_hdf5(cols)
     df.columns = new_cols
@@ -233,9 +235,12 @@ def _prepare_names_for_hdf5(names):
         if isinstance(name, list):
             new_names.append(prepare_names_for_hdf5(name))
         else:
-            new_name = name.lower().replace(' ', '_').replace('ä', 'a').replace('ö', 'o').replace('å','a').replace('%', 'perc')
-            new_name = PYTHONIFY_PATTERN.sub('', new_name)
-            new_names.append(new_name)
+            if isinstance(name, str):
+                new_name = name.lower().replace(' ', '_').replace('ä', 'a').replace('ö', 'o').replace('å','a').replace('%', 'perc')
+                new_name = PYTHONIFY_PATTERN.sub('', new_name)
+                new_names.append(new_name)
+            else:
+                new_names.append(name)
     return new_names
 
 
@@ -301,7 +306,7 @@ def flatten(df, stacked_cols=None):
     # | Koko maa    2011    Center Party    2939571                1709391                 ... 463266                295650                  ...|
     # | ...         ...     ...             ...                    ...                     ... ...                   ...                     ...|
     # |-----------------------------------------------------------------------------------------------------------------------------------------|
-    if df.columns.nlevels > 1:
+    if isinstance(df, pd.DataFrame) and df.columns.nlevels > 1:
         flat_col_names = ['_'.join(col_tuple) for col_tuple in df.columns]
         flat_idx = pd.Index(flat_col_names)
         df.columns = flat_idx
