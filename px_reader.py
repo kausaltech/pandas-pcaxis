@@ -244,14 +244,20 @@ def _prepare_names_for_hdf5(names):
     return new_names
 
 
-def flatten(df, stacked_cols=None):
+def flatten(df, stacked_cols=None, unstacked_indices=None):
     """
     Flattens a pandas.DataFrame with MultiIndex row and/or column indices to a 2D pandas.DataFrame with either
     Index or RangeIndex row and column indices. If input is an instance of pandas.Series or an already flat 
     pandas.DataFrames, it is returned as-is.
+
+    When figuring out indices for stacked_cols and unstacked_indices, note that stacked_cols are stacked before
+    unstacked_indices are unstacked.
+
     :param df: DataFrame (or Series to Flatten)
     :param stacked_cols: Any column levels that should be extracted into column(s), rather than flattened into parts of
-        the single-level column index. None indicates no stacking.
+        the single-level column index. None indicates no stacking. Equivalent to calling DataFrame.stack(level=stacked_cols)
+    :param unstacked_indices: Any row-indices that should be extracted into column indices. None indicates no unstacking.
+        Equivalent to calling DataFrame.unstack(level=unstacked_indices).
     :return: the flattened DataFrame.
     """
 
@@ -266,7 +272,6 @@ def flatten(df, stacked_cols=None):
         return df
 
     # If column is multi-indexed, extract the values of one column-index level to separate column.
-    # For StatFi data, 0 seems like a reasonable guess based on going over some tables manully.
     #
     # I.e. transform
     # |------------------------------------------------------------------------------------------------|
@@ -288,6 +293,24 @@ def flatten(df, stacked_cols=None):
     #
     if df.columns.nlevels > 1 and stacked_cols is not None:
         df = df.stack(level=stacked_cols)
+
+    # Generates a column-index out of a row-index.
+    #
+    # I.e. transform
+    #
+    # one  a   1.0
+    #      b   2.0
+    # two  a   3.0
+    #      b   4.0
+    #
+    # to
+    #
+    #        a    b
+    # one    1.0  2.0
+    # two    3.0  4.0
+    #
+    if df.index.nlevels > 1 and unstacked_indices is not None:
+        df = df.unstack(level=unstacked_indices)
 
     # If the DataFrame still has multi-index for columns, flatten the column index.
     #
