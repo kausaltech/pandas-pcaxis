@@ -72,7 +72,7 @@ def download_px(px_objs, target_dir='.', compressed=False, sleep=1, refresh='che
         target_path = os.path.join(target_dir, url_parts.path[1:]) # url_parts.path starts with '/'
         target_path = os.path.abspath(target_path)
 
-        if refresh != "never" and os.path.exists(target_path):
+        if refresh != "always" and os.path.exists(target_path):
             if refresh == 'check':
                 if is_latest(px_obj.path, target_path):
                     print('File {} is already latest, skipping'.format(target_path))
