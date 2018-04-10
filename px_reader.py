@@ -52,7 +52,7 @@ class Px(object):
         value = line[m.end():]
         return field.lower(), subkey, self._clean_value(value)
 
-    def _split_px(self, px_doc):
+    def _split_px(self, px_doc, language=None):
         """
         Parses metadata keywords from px_doc and inserts those into self object
         Returns the data part
@@ -65,6 +65,11 @@ class Px(object):
                 m = self._subfield_re.match(line)
                 if m:
                     field, subkey, value = self._get_subfield(m, line)
+                    if language: 
+                        if not '[{}]'.format(language) in field:
+                            continue
+                        field = field[:-2-len(language)]
+                        
                     if hasattr(self, field):
                         getattr(self, field)[subkey] = value
                     else:
@@ -73,13 +78,17 @@ class Px(object):
                             ))
                 else: 
                     field, value = line.split('=', 1)
+                    if language: 
+                        if not '[{}]'.format(language) in field:
+                            continue
+                        field = field[:-2-len(language)]
                     if not field.startswith('NOTE'):
                         setattr(self, field.strip().lower(), self._clean_value(value))
                         #TODO: NOTE keywords can be standalone or have subfields...
         return data.strip()[:-1]
    
-    def __init__(self, px_doc):
-        self._data = self._split_px(px_doc)
+    def __init__(self, px_doc, language=None):
+        self._data = self._split_px(px_doc, language=language)
 
         if type(self.stub) != type(list()):
             self.stub = [self.stub]
