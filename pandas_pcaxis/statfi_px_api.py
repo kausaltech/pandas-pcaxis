@@ -7,7 +7,15 @@ http://www.stat.fi/org/lainsaadanto/avoin_data_en.html
 For license see LICENSE document
 """
 
-import os, csv, datetime, urllib.request, urllib.parse, urllib.error, zlib, time
+import os
+import csv
+import datetime
+import urllib.request
+import urllib.parse
+import urllib.error
+import zlib
+import time
+
 
 class PxInfo(object):
     """
@@ -15,7 +23,7 @@ class PxInfo(object):
     Statistics Finland's open data API:
     """
 
-    _timeformat = '%Y-%m-%d %H:%M' #Just a cache place for dateformat
+    _timeformat = '%Y-%m-%d %H:%M'  # Just a cache place for dateformat
 
     def __init__(self, pathname, filesize, fileupdate, tablesize, languagecode, variables, title, *args):
 
@@ -41,6 +49,7 @@ class PxInfo(object):
     def updated_dt(self):
         return datetime.datetime.strptime(self.updated, self._timeformat)
 
+
 def list_available_px(url='http://pxnet2.stat.fi/database/StatFin/StatFin_rap.csv'):
     """
     Creates a list of Px-objects from a given url. Url should point to a CSV file.
@@ -48,11 +57,12 @@ def list_available_px(url='http://pxnet2.stat.fi/database/StatFin/StatFin_rap.cs
     """
     response = urllib.request.urlopen(url)
     lines = iter(response.read().decode('utf-8').splitlines())
-    next(lines) # Skip headers
+    next(lines)  # Skip headers
     pxs = []
     for line in csv.reader(lines, delimiter=";"):
         pxs.append(PxInfo(line[:6], line[15]))
     return [PxInfo(*i) for i in csv.reader(lines, delimiter=";")]
+
 
 def download_px(px_objs, target_dir='.', compressed=False, sleep=1, refresh='check'):
     """
@@ -64,14 +74,16 @@ def download_px(px_objs, target_dir='.', compressed=False, sleep=1, refresh='che
 
     refresh_options = ['never', 'check', 'always']
     if refresh not in refresh_options:
-        raise ValueError('Invalid value for refresh, must be one of "{}"'.format('", "'.join(refresh_options)))
+        raise ValueError('Invalid value for refresh, must be one of "{}"'.format(
+            '", "'.join(refresh_options)))
 
     if not isinstance(px_objs, list):
         px_objs = [px_objs]
 
     for px_obj in px_objs:
         url_parts = urllib.parse.urlparse(px_obj.path)
-        target_path = os.path.join(target_dir, url_parts.path[1:]) # url_parts.path starts with '/'
+        # url_parts.path starts with '/'
+        target_path = os.path.join(target_dir, url_parts.path[1:])
         target_path = os.path.abspath(target_path)
 
         if refresh != "always" and os.path.exists(target_path):
@@ -101,7 +113,7 @@ def download_px(px_objs, target_dir='.', compressed=False, sleep=1, refresh='che
             with open(target_path, 'wb') as f:
                 data = response.read()
                 if compressed:
-                    data = zlib.decompress(data, zlib.MAX_WBITS|16)
+                    data = zlib.decompress(data, zlib.MAX_WBITS | 16)
                 f.write(data)
         except IOError as e:
             print('ERROR:', e)
@@ -111,17 +123,22 @@ def download_px(px_objs, target_dir='.', compressed=False, sleep=1, refresh='che
         print('done')
         time.sleep(sleep)
 
+
 def is_latest(url, file_path):
     """
     Check that network resource is newer than file resource
     """
     try:
-        response = urllib.request.urlopen(urllib.request.Request(url, method='HEAD'))
-        file_mtime_dt = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
-        url_modified_dt = datetime.datetime.strptime(response.getheader('last-modified'), '%a, %d %b %Y %H:%M:%S GMT')
+        response = urllib.request.urlopen(
+            urllib.request.Request(url, method='HEAD'))
+        file_mtime_dt = datetime.datetime.fromtimestamp(
+            os.path.getmtime(file_path))
+        url_modified_dt = datetime.datetime.strptime(
+            response.getheader('last-modified'), '%a, %d %b %Y %H:%M:%S GMT')
         return url_modified_dt < file_mtime_dt
     except urllib.error.HTTPError as e:
         return True
+
 
 def makedirs(px_path):
     try:

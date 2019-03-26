@@ -24,6 +24,7 @@ import re
 
 PYTHONIFY_PATTERN = re.compile('[\W]+')
 
+
 class Px(object):
     """
     PC Axis document structure as a object interface
@@ -31,7 +32,7 @@ class Px(object):
     Creates dynamically fields containing everything from PC Axis file's metadata part
     (excluding multilingual fields for the moment #FIXME multilingual fields)
     """
-    
+
     _timeformat = '%Y-%m-%d %H:%M'
     _subfield_re = re.compile(r'^(.*?)\("(.*?)"\)=')
     _items_re = re.compile(r'"(.*?)"')
@@ -61,33 +62,34 @@ class Px(object):
         meta, data = open(px_doc, encoding='ISO-8859-1').read().split("DATA=")
         nmeta = {}
         for line in meta.strip().split(';\n'):
-            line=line.strip()
+            line = line.strip()
             if line:
                 m = self._subfield_re.match(line)
                 if m:
                     field, subkey, value = self._get_subfield(m, line)
-                    if language: 
+                    if language:
                         if not '[{}]'.format(language) in field:
                             continue
                         field = field[:-2-len(language)]
-                        
+
                     if hasattr(self, field):
                         getattr(self, field)[subkey] = value
                     else:
                         setattr(self, field, OD(
                             [(subkey, value)]
-                            ))
-                else: 
+                        ))
+                else:
                     field, value = line.split('=', 1)
-                    if language: 
+                    if language:
                         if not '[{}]'.format(language) in field:
                             continue
                         field = field[:-2-len(language)]
                     if not field.startswith('NOTE'):
-                        setattr(self, field.strip().lower(), self._clean_value(value))
-                        #TODO: NOTE keywords can be standalone or have subfields...
+                        setattr(self, field.strip().lower(),
+                                self._clean_value(value))
+                        # TODO: NOTE keywords can be standalone or have subfields...
         return data.strip()[:-1]
-   
+
     def __init__(self, px_doc, language=None):
         self._data = self._split_px(px_doc, language=language)
 
@@ -104,13 +106,15 @@ class Px(object):
         #
         # Number of rows and cols is multiplication of number of variables for both directions
         #
-        self.cols = reduce(mul, [len(self.values.get(i)) for i in self.heading], 1)
-        self.rows = reduce(mul, [len(self.values.get(i)) for i in self.stub], 1)
-   
+        self.cols = reduce(mul, [len(self.values.get(i))
+                                 for i in self.heading], 1)
+        self.rows = reduce(mul, [len(self.values.get(i))
+                                 for i in self.stub], 1)
+
     @property
     def created_dt(self):
         return datetime.datetime.strptime(self.created, self._timeformat)
-   
+
     @property
     def updated_dt(self):
         return datetime.datetime.strptime(self.updated, self._timeformat)
@@ -246,7 +250,8 @@ def _prepare_names_for_hdf5(names):
             new_names.append(prepare_names_for_hdf5(name))
         else:
             if isinstance(name, str):
-                new_name = name.lower().replace(' ', '_').replace('ä', 'a').replace('ö', 'o').replace('å','a').replace('%', 'perc')
+                new_name = name.lower().replace(' ', '_').replace('ä', 'a').replace(
+                    'ö', 'o').replace('å', 'a').replace('%', 'perc')
                 new_name = PYTHONIFY_PATTERN.sub('', new_name)
                 new_names.append(new_name)
             else:
