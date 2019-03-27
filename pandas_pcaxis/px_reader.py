@@ -11,123 +11,124 @@ This module contains a Px class which parses the PX file structure including met
 
 In addition there is a conversion functionality to create a Pandas DataFrame object with MultiIndex
 (multidimensional table) from PX data
-
-Note: Python 2.7 support required
 """
 
-from collections import OrderedDict as OD
+import re
+from collections import OrderedDict
+from datetime import datetime
 from itertools import zip_longest, cycle
 from operator import mul
 import pandas as pd
 from functools import reduce
-import re
 
-PYTHONIFY_PATTERN = re.compile('[\W]+')
+from lark import Lark, Transformer, Token
 
 
-class Px(object):
-    """
-    PC Axis document structure as a object interface
+PYTHONIFY_PATTERN = re.compile(r'[\W]+')
 
-    Creates dynamically fields containing everything from PC Axis file's metadata part
-    (excluding multilingual fields for the moment #FIXME multilingual fields)
-    """
 
-    _timeformat = '%Y-%m-%d %H:%M'
-    _subfield_re = re.compile(r'^(.*?)\("(.*?)"\)=')
-    _items_re = re.compile(r'"(.*?)"')
+px_parser = Lark(r"""
+    start: assignment+
 
-    def _get_subfield_name(self, field):
-        m = self._subfield_re.search(field)
-        if m:
-            return m.groups()
+    assignment: (meta_assignment|data_assignment) ";" NEWLINE
 
-    def _clean_value(self, value):
-        items = self._items_re.findall(value)
-        if len(items) == 1:
-            return items.pop()
-        else:
-            return items
+    meta_assignment: key "=" [NEWLINE] [value ("," [NEWLINE] value)*]
+    data_assignment: "DATA=" NEWLINE data
 
-    def _get_subfield(self, m, line):
-        field, subkey = m.groups()
-        value = line[m.end():]
-        return field.lower(), subkey, self._clean_value(value)
+    key: /[A-Z-]+/ ["[" language "]"] [specifier]
 
-    def _split_px(self, px_doc, language=None):
-        """
-        Parses metadata keywords from px_doc and inserts those into self object
-        Returns the data part
-        """
-        meta, data = open(px_doc, encoding='ISO-8859-1').read().split("DATA=")
-        nmeta = {}
-        for line in meta.strip().split(';\n'):
-            line = line.strip()
-            if line:
-                m = self._subfield_re.match(line)
-                if m:
-                    field, subkey, value = self._get_subfield(m, line)
-                    if language:
-                        if not '[{}]'.format(language) in field:
-                            continue
-                        field = field[:-2-len(language)]
+    value: (multiline|NUMBER|BOOLEAN)
+    specifier: "(" ESCAPED_STRING ("," ESCAPED_STRING)* ")"
+    language: /[a-z]{2}/
 
-                    if hasattr(self, field):
-                        getattr(self, field)[subkey] = value
-                    else:
-                        setattr(self, field, OD(
-                            [(subkey, value)]
-                        ))
-                else:
-                    field, value = line.split('=', 1)
-                    if language:
-                        if not '[{}]'.format(language) in field:
-                            continue
-                        field = field[:-2-len(language)]
-                    if not field.startswith('NOTE'):
-                        setattr(self, field.strip().lower(),
-                                self._clean_value(value))
-                        # TODO: NOTE keywords can be standalone or have subfields...
-        return data.strip()[:-1]
+    data: dataline+
+    dataline: /./+ NEWLINE
 
-    def __init__(self, px_doc, language=None):
-        self._data = self._split_px(px_doc, language=language)
+    BOOLEAN: ("YES"|"NO")
+    multiline: line (";" NEWLINE line)*
+    line: ESCAPED_STRING (NEWLINE ESCAPED_STRING)*
 
-        if type(self.stub) != type(list()):
-            self.stub = [self.stub]
+    %import common.ESCAPED_STRING
+    %import common.NUMBER
+    %import common.NEWLINE
+""", start='start')
 
-        if type(self.heading) != type(list()):
-            self.heading = [self.heading]
 
-        for key, val in list(self.values.items()):
-            if type(val) != type(list()):
-                self.values[key] = [val]
+class PXTransformer(Transformer):
+    def value(self, tokens):
+        assert len(tokens) == 1
+        t = tokens[0]
+        if isinstance(t, Token):
+            if t.type == 'BOOLEAN':
+                t = dict(YES=True, NO=False)[t.value]
+            elif t.type == 'NUMBER':
+                t = int(t.value)
+        return t
 
-        #
-        # Number of rows and cols is multiplication of number of variables for both directions
-        #
-        self.cols = reduce(mul, [len(self.values.get(i))
-                                 for i in self.heading], 1)
-        self.rows = reduce(mul, [len(self.values.get(i))
-                                 for i in self.stub], 1)
+    def multiline(self, tokens):
+        return '\n'.join(tokens)
 
-    @property
-    def created_dt(self):
-        return datetime.datetime.strptime(self.created, self._timeformat)
+    def line(self, tokens):
+        return ''.join([t[1:-1].replace('#', '\n') for t in tokens if t.type == 'ESCAPED_STRING'])
 
-    @property
-    def updated_dt(self):
-        return datetime.datetime.strptime(self.updated, self._timeformat)
+    def specifier(self, tokens):
+        tokens = [t.value[1:-1] for t in tokens]
+        return dict(specifier=tokens)
 
-    @property
-    def data(self):
-        return list(grouper(self.cols, self._data.split()))
+    def key(self, tokens):
+        assert len(tokens) >= 1
+        key = tokens.pop(0)
+        d = {'key': key.value.lower().replace('-', '_')}
+        for t in tokens:
+            assert isinstance(t, dict)
+            d.update(t)
+        return d
 
-    def pd_dataframe(self):
-        """
-        Shortcut function to return Pandas DataFrame build from PX file's structure
-        """
-        return build_dataframe(self)
+    def language(self, tokens):
+        assert len(tokens) == 1
+        return dict(language=tokens[0].value)
+
+    def meta_assignment(self, tokens):
+        key = tokens.pop(0)
+        values = [t for t in tokens if getattr(t, 'type', None) != 'NEWLINE']
+        if len(values) == 1:
+            values = values[0]
+        key['value'] = values
+        return key
+
+    def assignment(self, tokens):
+        tokens = [t for t in tokens if isinstance(t, dict)]
+        assert len(tokens) == 1
+        return tokens[0]
+
+    def start(self, tokens):
+        d = OrderedDict()
+        for t in tokens:
+            key = t.pop('key')
+            value = t.pop('value')
+            if 'language' in t:
+                # TODO: proper support for languages
+                continue
+            if 'specifier' in t:
+                specifiers = t.pop('specifier')
+                if len(specifiers) > 1:
+                    # TODO: proper support for several specifiers
+                    continue
+
+                if key in d and not isinstance(d[key], OrderedDict):
+                    d[key] = OrderedDict([('', d[key])])
+
+                vals = d.setdefault(key, OrderedDict())
+
+                for specifier in specifiers:
+                    assert specifier not in vals
+                    vals[specifier] = value
+            else:
+                assert key not in d
+                d[key] = value
+            assert not t
+
+        return d
 
 
 def grouper(n, iterable, fillvalue=None):
@@ -140,84 +141,171 @@ def grouper(n, iterable, fillvalue=None):
     return zip_longest(fillvalue=fillvalue, *args)
 
 
-def generate_indices(px):
+class PxFile:
+    def _generate_indices(self):
+        """
+        Pandas has a concept of MultiIndex for hierarchical or multidimensional tables
+        PC Axis files have list of column and row variables (can be thought of as column
+        and row headings for the purposes of this documentation)
+
+        Lowest level (last in the list) variable is repeated for exactly one
+        column or row each till all columns/rows have a variable
+
+        Going up the convention states that upper level variable groups lower level variable.
+
+        Since Pandas MultiIndex excepts certain format for its variable structure:
+
+        first level : [val1, val1, val1, val1, val2, val2, val2, val2]
+        second level: [valx, valx, valz, valz, valx, valx, valz, valz]
+        third level : [vala, valb, vala, valb, vala, valb, vala, valb] the lowest level
+
+        This is one algorithm for generating repeating variable values from PX table structure
+        First level/dimension:
+            repeat = cols or rows / number of level's values
+        Second level:
+            repeat = first iterations repeat/ number of second level's values
+        And so on
+
+        Example:
+        cols = 12
+        first level values = 2
+        second level values = 3
+        third level values = 3
+        12/2 = 6
+        6 / 2 = 3
+        3 / 3 = 1
+        """
+        col_index = []
+        rep_index = self.n_cols
+        for n, field in enumerate(self.meta['heading']):
+            field_values = [x.strip() for x in self.meta['values'][field]]
+            repeats = rep_index / len(field_values)
+            rep_index = repeats
+
+            col_index.append(list())
+            index = 0
+            values = cycle(field_values)
+            value = next(values)
+            for i, rep in enumerate(range(self.n_cols)):
+                if index == repeats:
+                    index = 0
+                    value = next(values)
+                index += 1
+                col_index[n].append(value)
+
+        row_index = []
+        rep_index = self.n_rows
+        for n, field in enumerate(self.meta['stub']):
+            field_values = [x.strip() for x in self.meta['values'][field]]
+            repeats = rep_index / len(field_values)
+            rep_index = repeats
+
+            row_index.append(list())
+            index = 0
+            values = cycle(field_values)
+            value = next(values)
+            for i, rep in enumerate(range(self.n_rows)):
+                if index == repeats:
+                    index = 0
+                    value = next(values)
+                index += 1
+                row_index[n].append(value)
+        return col_index, row_index
+
+    def to_df(self, melt=False, dropna=False):
+        """
+        Build a Pandas DataFrame from Px rows and columns
+        """
+        cols, rows = self._generate_indices()
+        col_index = pd.MultiIndex.from_arrays(cols, names=self.meta['heading'])
+        if len(self.meta['heading']) == 1:
+            # Convert to flat index
+            col_index = col_index.get_level_values(0)
+        row_index = pd.MultiIndex.from_arrays(rows, names=self.meta['stub'])
+        if len(self.meta['stub']) == 1:
+            # Convert to flat index
+            row_index = row_index.get_level_values(0)
+        df = pd.DataFrame(self.data, index=row_index, columns=col_index)
+        if melt:
+            df = pd.melt(df.reset_index(), id_vars=self.meta['stub'])
+            for row_name in self.meta['stub']:
+                df[row_name] = df[row_name].astype('category')
+            if dropna:
+                df.value = pd.to_numeric(df.value, errors='coerce')
+                df = df.dropna()
+
+        return df
+
+    def __init__(self, meta, data):
+        self.meta = meta
+
+        # Number of rows and cols is multiplication of number of variables for
+        # both directions
+        self.n_cols = reduce(mul, [len(meta['values'][key]) for key in meta['heading']], 1)
+        self.n_rows = reduce(mul, [len(meta['values'][key]) for key in meta['stub']], 1)
+
+        self.data = list(grouper(self.n_cols, data))
+
+
+def convert_cell(c):
+    if c.startswith('"'):
+        # Strip quotation marks
+        return c[1:-1]
+    else:
+        try:
+            return int(c)
+        except ValueError:
+            return float(c)
+
+
+class PxParser:
     """
-    Pandas has a concept of MultiIndex for hierarchical or multidimensional tables
-    PC Axis files have list of column and row variables (can be thought of as column
-    and row headings for the purposes of this documentation)
+    PC Axis document structure as a object interface
 
-    Lowest level (last in the list) variable is repeated for exactly one
-    column or row each till all columns/rows have a variable
-
-    Going up the convention states that upper level variable groups lower level variable.
-
-    Since Pandas MultiIndex excepts certain format for its variable structure:
-
-    first level : [val1, val1, val1, val1, val2, val2, val2, val2]
-    second level: [valx, valx, valz, valz, valx, valx, valz, valz]
-    third level : [vala, valb, vala, valb, vala, valb, vala, valb] the lowest level
-
-    This is one algorithm for generating repeating variable values from PX table structure
-    First level/dimension:
-        repeat = cols or rows / number of level's values
-    Second level:
-        repeat = first iterations repeat/ number of second level's values
-    And so on
-
-    Example:
-    cols = 12
-    first level values = 2
-    second level values = 3
-    third level values = 3
-    12/2 = 6
-    6 / 2 = 3
-    3 / 3 = 1
+    Creates dynamically fields containing everything from PC Axis file's
+    metadata part (excluding multilingual fields for the moment)
+    #FIXME multilingual fields
     """
-    col_index = []
-    rep_index = px.cols
-    for n, field in enumerate(px.heading):
-        field_values = px.values.get(field)
-        repeats = rep_index / len(field_values)
-        rep_index = repeats
 
-        col_index.append(list())
-        index = 0
-        values = cycle(field_values)
-        value = next(values)
-        for i, rep in enumerate(range(px.cols)):
-            if index == repeats:
-                index = 0
-                value = next(values)
-            index += 1
-            col_index[n].append(value)
-    row_index = []
-    rep_index = px.rows
-    for n, field in enumerate(px.stub):
-        field_values = px.values.get(field)
-        repeats = rep_index / len(field_values)
-        rep_index = repeats
+    _timeformat = '%Y%m%d %H:%M'
 
-        row_index.append(list())
-        index = 0
-        values = cycle(field_values)
-        value = next(values)
-        for i, rep in enumerate(range(px.rows)):
-            if index == repeats:
-                index = 0
-                value = next(values)
-            index += 1
-            row_index[n].append(value)
-    return col_index, row_index
+    def parse(self, content):
+        """
+        Parses metadata keywords from px_doc and inserts those into self object
+        Returns the data part
+        """
+        if isinstance(content, bytes):
+            content = content.decode(self.encoding)
 
+        meta_content, data = content.split("DATA=")
 
-def build_dataframe(px):
-    """
-    Build a Pandas DataFrame from Px rows and columns
-    """
-    cols, rows = generate_indices(px)
-    col_index = pd.MultiIndex.from_arrays(cols)
-    row_index = pd.MultiIndex.from_arrays(rows)
-    return pd.DataFrame(px.data, index=row_index, columns=col_index)
+        tree = px_parser.parse(meta_content)
+        meta = PXTransformer().transform(tree)
+
+        # Parse timestamps
+        for key in ('creation_date', 'last_updated'):
+            if key not in meta:
+                continue
+            meta[key] = datetime.strptime(meta[key], self._timeformat)
+
+        # Make sure these are lists
+        for key in ('heading', 'stub'):
+            val = meta[key]
+            if not isinstance(val, list):
+                meta[key] = [val]
+        if 'values' in meta:
+            for field, val in meta['values'].items():
+                if not isinstance(val, list):
+                    meta['values'][field] = [val]
+
+        lines = [l.strip() for l in data.strip().rstrip(';').splitlines()]
+        cells = [convert_cell(c) for line in lines for c in line.split()]
+
+        return PxFile(meta, cells)
+
+    def __init__(self, language=None, encoding='ISO-8859-1'):
+        self.language = language
+        self.encoding = encoding
 
 
 def pythonify_column_names(df):
@@ -247,7 +335,7 @@ def _prepare_names_for_hdf5(names):
     new_names = []
     for name in names:
         if isinstance(name, list):
-            new_names.append(prepare_names_for_hdf5(name))
+            new_names.append(_prepare_names_for_hdf5(name))
         else:
             if isinstance(name, str):
                 new_name = name.lower().replace(' ', '_').replace('ä', 'a').replace(
@@ -261,18 +349,22 @@ def _prepare_names_for_hdf5(names):
 
 def flatten(df, stacked_cols=None, unstacked_indices=None):
     """
-    Flattens a pandas.DataFrame with MultiIndex row and/or column indices to a 2D pandas.DataFrame with either
-    Index or RangeIndex row and column indices. If input is an instance of pandas.Series or an already flat 
-    pandas.DataFrames, it is returned as-is.
+    Flattens a pandas.DataFrame with MultiIndex row and/or column indices to a
+    2D pandas.DataFrame with either Index or RangeIndex row and column indices.
+    If input is an instance of pandas.Series or an already flat pandas.DataFrames,
+    it is returned as-is.
 
-    When figuring out indices for stacked_cols and unstacked_indices, note that stacked_cols are stacked before
-    unstacked_indices are unstacked.
+    When figuring out indices for stacked_cols and unstacked_indices, note that
+    stacked_cols are stacked before unstacked_indices are unstacked.
 
     :param df: DataFrame (or Series to Flatten)
-    :param stacked_cols: Any column levels that should be extracted into column(s), rather than flattened into parts of
-        the single-level column index. None indicates no stacking. Equivalent to calling DataFrame.stack(level=stacked_cols)
-    :param unstacked_indices: Any row-indices that should be extracted into column indices. None indicates no unstacking.
-        Equivalent to calling DataFrame.unstack(level=unstacked_indices).
+    :param stacked_cols: Any column levels that should be extracted into
+        column(s), rather than flattened into parts of the single-level column
+        index. None indicates no stacking. Equivalent to calling
+        DataFrame.stack(level=stacked_cols)
+    :param unstacked_indices: Any row-indices that should be extracted into
+        column indices. None indicates no unstacking. Equivalent to calling
+        DataFrame.unstack(level=unstacked_indices).
     :return: the flattened DataFrame.
     """
 
