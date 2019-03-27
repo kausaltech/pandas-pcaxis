@@ -13,6 +13,7 @@ setup(
     install_requires=[
         'pandas',
         'requests',
+        'lark-parser',
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',
