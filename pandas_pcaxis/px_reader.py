@@ -37,7 +37,7 @@ px_parser = Lark(r"""
 
     key: /[A-Z-]+/ ["[" language "]"] [specifier]
 
-    value: (multiline|NUMBER|BOOLEAN)
+    value: (multiline|time_specifier|NUMBER|BOOLEAN)
     specifier: "(" ESCAPED_STRING ("," ESCAPED_STRING)* ")"
     language: /[a-z]{2}/
 
@@ -47,6 +47,8 @@ px_parser = Lark(r"""
     BOOLEAN: ("YES"|"NO")
     multiline: line (";" NEWLINE line)*
     line: ESCAPED_STRING (NEWLINE ESCAPED_STRING)*
+    time_specifier: "TLIST(" period_dtype ")"
+    period_dtype: ("A1"|"H1"|"Q1"|"M1"|"W1")
 
     %import common.ESCAPED_STRING
     %import common.NUMBER
@@ -212,7 +214,7 @@ class PxFile:
                 row_index[n].append(value)
         return col_index, row_index
 
-    def to_df(self, melt=False, dropna=False):
+    def to_df(self, melt=False, dropna=False, drop_sums=True):
         """
         Build a Pandas DataFrame from Px rows and columns
         """
@@ -226,10 +228,39 @@ class PxFile:
             # Convert to flat index
             row_index = row_index.get_level_values(0)
         df = pd.DataFrame(self.data, index=row_index, columns=col_index)
+
+        elimination = self.meta.get('elimination')
+        if drop_sums and elimination:
+            index = df.index.copy()
+            for level, name in enumerate(df.index.names):
+                if name not in elimination:
+                    continue
+                if isinstance(index, pd.MultiIndex):
+                    index = index.drop(elimination[name], level=level)
+                else:
+                    index = index.drop(elimination[name])
+            if isinstance(index, pd.MultiIndex):
+                index = index.remove_unused_levels()
+            df = df.reindex(index)
+
+            for level, name in enumerate(df.columns.names):
+                if name not in elimination:
+                    continue
+                df = df.drop(columns=elimination[name], level=level)
+
         if melt:
             df = pd.melt(df.reset_index(), id_vars=self.meta['stub'])
-            for row_name in self.meta['stub']:
-                df[row_name] = df[row_name].astype('category')
+            variable_types = self.meta.get('variable_type', {})
+            for row_name in df.columns:
+                if row_name in self.meta['stub']:
+                    dtype = 'category'
+                elif variable_types.get(row_name, '') == 'Classificatory':
+                    dtype = 'category'
+                elif self.meta.get('contvariable', '') == row_name:
+                    dtype = 'category'
+                else:
+                    continue
+                df[row_name] = df[row_name].astype(dtype)
             if dropna:
                 df.value = pd.to_numeric(df.value, errors='coerce')
                 df = df.dropna()
@@ -286,7 +317,12 @@ class PxParser:
         for key in ('creation_date', 'last_updated'):
             if key not in meta:
                 continue
-            meta[key] = datetime.strptime(meta[key], self._timeformat)
+            if isinstance(meta[key], OrderedDict):
+                # FIXME
+                timestamp = list(meta[key].values())[0]
+            else:
+                timestamp = meta[key]
+            meta[key] = datetime.strptime(timestamp, self._timeformat)
 
         # Make sure these are lists
         for key in ('heading', 'stub'):
