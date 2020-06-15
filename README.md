@@ -1,16 +1,14 @@
 
-# PC Axis PX file format reader for Python
+# PC Axis Px file format reader for Python
 
-# WIP
+The Px file format is part of the [Px suite of statistical software](https://www.scb.se/px-en) developed by Statistics Sweden. The [format](https://www.scb.se/en/services/statistical-programs-for-px-files/px-file-format/) is documented online.
 
-Now requires Python 3, but has not been tested beyond a simple Download -> PX file on disk -> Pandas Dataframe workflow on Python 3.6 and Pandas 0.20.2. Python 2 is not supported at the moment (PX file -> Pandas DataFrame works on commit 7669e5ccb5b8e0825d1044d5fe908b162904a523, current status in unknown).
+## Installation
 
-## Usage
-
-Requisite packages:
+Through pip:
 
 ```
-pip install pandas
+pip install -e git+https://github.com/juyrjola/pandas-pcaxis#egg=pandas-pcaxis
 ```
 
 To fetch list of available PX files
