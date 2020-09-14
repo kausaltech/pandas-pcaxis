@@ -47,7 +47,7 @@ px_parser = Lark(r"""
     BOOLEAN: ("YES"|"NO")
     multiline: line (";" NEWLINE line)*
     line: ESCAPED_STRING (NEWLINE ESCAPED_STRING)*
-    time_specifier: "TLIST(" period_dtype ")"
+    time_specifier: "TLIST(" period_dtype ")" ("," ESCAPED_STRING)*
     period_dtype: ("A1"|"H1"|"Q1"|"M1"|"W1")
 
     %import common.ESCAPED_STRING
@@ -312,6 +312,9 @@ class PxParser:
 
         tree = px_parser.parse(meta_content)
         meta = PXTransformer().transform(tree)
+
+        if 'timeval' in meta:
+            del meta['timeval']
 
         # Parse timestamps
         for key in ('creation_date', 'last_updated'):
