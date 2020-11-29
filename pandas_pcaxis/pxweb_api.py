@@ -1,4 +1,7 @@
+from datetime import datetime
+
 import requests
+
 from .px_reader import PxParser
 
 
@@ -23,14 +26,21 @@ class PXWebAPI:
         return self.get('')
 
     def list_topics(self, dbid):
-        return self.get(dbid)
+        topics = self.get(dbid)
+        for topic in topics:
+            if 'updated' in topic:
+                topic['updated'] = datetime.fromisoformat(topic['updated'])
+        return topics
 
-    def get_table(self, path, as_df=False):
+    def get_raw_table(self, path):
         url = '%s/Resources/PX/Databases/%s' % (self.base_url, path)
         resp = requests.get(url)
         resp.raise_for_status()
+        return resp.content
+
+    def get_table(self, path, as_df=False):
         parser = PxParser()
-        pxfile = parser.parse(resp.content)
+        pxfile = parser.parse(self.get_raw_table(path))
         return pxfile
 
 
