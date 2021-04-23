@@ -34,7 +34,7 @@ px_parser = Lark(r"""
     meta_assignment: key "=" [NEWLINE] [value ("," [NEWLINE] value)*]
     data_assignment: "DATA=" NEWLINE data
 
-    key: /[A-Z-]+/ ["[" language "]"] [specifier]
+    key: /[A-Z0-9-]+/ ["[" language "]"] [specifier]
 
     value: (multiline|time_specifier|NUMBER|BOOLEAN)
     specifier: "(" ESCAPED_STRING ("," ESCAPED_STRING)* ")"
@@ -222,6 +222,7 @@ class PxFile:
         if len(self.meta['heading']) == 1:
             # Convert to flat index
             col_index = col_index.get_level_values(0)
+
         row_index = pd.MultiIndex.from_arrays(rows, names=self.meta['stub'])
         if len(self.meta['stub']) == 1:
             # Convert to flat index
@@ -326,11 +327,35 @@ class PxParser:
                 timestamp = meta[key]
             meta[key] = datetime.strptime(timestamp, self._timeformat)
 
+        if 'stub' not in meta:
+            # If stub is not specified, we try to find the most suitable
+            # 'heading' variable to act as the row index. If all the values
+            # are integers, it's probably a year column, so we choose that.
+            # If not, we pick the one that has the most values.
+            heading = None
+            for key in meta['heading']:
+                for val in meta['values'][key]:
+                    try:
+                        int(val)
+                    except ValueError:
+                        break
+                else:
+                    heading = key
+                    break
+            else:
+                lengths = [(x[0], len(x[1])) for x in meta['values'].items()]
+                longest = max(lengths, key=lambda x: x[1])
+                heading = longest[0]
+
+            meta['stub'] = [heading]
+            meta['heading'].remove(heading)
+
         # Make sure these are lists
         for key in ('heading', 'stub'):
             val = meta[key]
             if not isinstance(val, list):
                 meta[key] = [val]
+
         if 'values' in meta:
             for field, val in meta['values'].items():
                 if not isinstance(val, list):

@@ -6,18 +6,20 @@ from .px_reader import PxParser
 
 
 class PXWebAPI:
-    def __init__(self, base_url, language='en'):
+    def __init__(self, base_url, language='en', base_path='api/v1', data_method='get'):
         self.base_url = base_url
         self.language = language
+        self.base_path = base_path
+        self.data_method = data_method
 
     def get(self, path):
-        url = '%s/api/v1/%s/%s' % (self.base_url, self.language, path)
+        url = '%s/%s/%s/%s' % (self.base_url, self.base_path, self.language, path)
         resp = requests.get(url)
         resp.raise_for_status()
         return resp.json()
 
     def post(self, path, params):
-        url = '%s/api/v1/%s/%s' % (self.base_url, self.language, path)
+        url = '%s/%s/%s/%s' % (self.base_url, self.base_path, self.language, path)
         resp = requests.post(url, json=params)
         resp.raise_for_status()
         return resp
@@ -33,8 +35,11 @@ class PXWebAPI:
         return topics
 
     def get_raw_table(self, path):
-        url = '%s/Resources/PX/Databases/%s' % (self.base_url, path)
-        resp = requests.get(url)
+        if self.data_method == 'post':
+            resp = self.post(path, params={'query': [], 'response': {'format': 'px'}})
+        else:
+            url = '%s/Resources/PX/Databases/%s' % (self.base_url, path)
+            resp = requests.get(url)
         resp.raise_for_status()
         return resp.content
 
